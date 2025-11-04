@@ -32,7 +32,7 @@ export function Chat() {
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
+    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4 pb-6">
       <div className="mb-4">
         <h1 className="text-2xl font-bold">Tobi Chat</h1>
         <p className="text-sm text-muted-foreground">
@@ -93,43 +93,50 @@ export function Chat() {
             );
           })}
 
-          {isLoading && (
-            <div className="flex justify-start">
-              <Card className="p-4 bg-muted">
-                <Loader2 className="h-5 w-5 animate-spin" />
-              </Card>
-            </div>
-          )}
-
           <div ref={scrollRef} />
         </div>
       </ScrollArea>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (input.trim()) {
-            sendMessage({ content: input });
-            setInput("");
-          }
-        }}
-        className="mt-4 flex gap-2"
-      >
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type your message..."
-          disabled={isLoading}
-          className="flex-1"
-        />
-        <Button type="submit" disabled={isLoading || !input.trim()}>
-          {isLoading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Send className="h-5 w-5" />
-          )}
-        </Button>
-      </form>
+      <Card className="mt-4 p-3 shadow-lg border-2">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (input.trim()) {
+              sendMessage({ content: input });
+              setInput("");
+            }
+          }}
+          className="flex items-center gap-3"
+        >
+          <div className="flex-1 relative">
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type your message..."
+              disabled={isLoading}
+              className="pr-4 py-6 text-base border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent shadow-none outline-none"
+            />
+          </div>
+          <Button 
+            type="submit" 
+            disabled={isLoading || !input.trim()}
+            size="lg"
+            className="h-11 px-6 shrink-0 font-medium"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4 mr-2" />
+                Send
+              </>
+            )}
+          </Button>
+        </form>
+      </Card>
     </div>
   );
 }
