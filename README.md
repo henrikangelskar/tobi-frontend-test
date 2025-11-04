@@ -1,36 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tobi Frontend Test
+
+A Next.js frontend for testing the vipps-tobi backend with real-time chat streaming and rich product previews.
+
+## Features
+
+- **Real-time Streaming**: Uses Vercel AI SDK v5 with Server-Sent Events (SSE) for live chat responses
+- **Rich Previews**: Displays product cards with images, prices, and shop information
+- **Modern UI**: Built with Next.js 15, shadcn/ui, and Tailwind CSS
+- **Type-safe**: Full TypeScript support matching backend types
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- vipps-tobi backend running (default: http://localhost:3000)
+
+### Installation
+
+```bash
+npm install
+```
+
+### Configuration
+
+Update `.env.local` with your backend URL:
+
+```env
+BACKEND_URL=http://localhost:3000
+```
+
+### Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3333](http://localhost:3333) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How It Works
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Backend Integration
 
-## Learn More
+The frontend proxies chat requests to the vipps-tobi backend:
 
-To learn more about Next.js, take a look at the following resources:
+1. User sends a message via the chat UI
+2. Frontend sends POST request to `/api/chat`
+3. API route forwards to backend's `/chat` endpoint
+4. Backend streams response using SSE (Server-Sent Events)
+5. Frontend receives and displays:
+   - Text responses in real-time
+   - Product previews as custom data parts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Custom Data Parts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The backend sends product data using the Vercel AI SDK's data parts system:
 
-## Deploy on Vercel
+```typescript
+{
+  type: "data-productPreviews",
+  data: {
+    products: [
+      {
+        title: "Product Name",
+        price: "99 kr",
+        shopName: "Shop Name",
+        shopUrl: "https://...",
+        imageUrl: "https://..."
+      }
+    ]
+  }
+}
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The frontend renders these as product cards using the `ProductPreview` component.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project Structure
+
+```
+├── app/
+│   ├── api/chat/route.ts      # Proxy to backend
+│   ├── page.tsx                # Main chat page
+│   └── globals.css             # Global styles
+├── components/
+│   ├── chat.tsx                # Main chat component with useChat
+│   ├── product-preview.tsx     # Product card component
+│   └── ui/                     # shadcn/ui components
+├── lib/
+│   ├── types.ts                # TypeScript types matching backend
+│   └── utils.ts                # Utilities
+└── .env.local                  # Environment variables
+```
+
+## Tech Stack
+
+- **Framework**: Next.js 15 (App Router)
+- **Streaming**: Vercel AI SDK v5 (Server-Sent Events)
+- **UI**: shadcn/ui + Tailwind CSS
+- **Icons**: Lucide React
+- **Language**: TypeScript
+
+## Streaming Protocol
+
+This app uses the latest streaming approach (November 2025):
+
+- **Server-Sent Events (SSE)**: Standard streaming protocol
+- **Data Stream Protocol**: Vercel AI SDK v5's built-in protocol
+- **Custom Data Parts**: Type-safe custom data streaming
+- **Progressive Loading**: Products appear as they're discovered
+
+## Authentication
+
+If your backend requires authentication, you can add the Authorization header in the chat component:
+
+```typescript
+const { messages, input, handleInputChange, handleSubmit, isLoading } =
+  useChat<CustomUIMessage>({
+    api: "/api/chat",
+    headers: {
+      Authorization: "Bearer YOUR_TOKEN",
+    },
+  });
+```
