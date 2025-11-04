@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Product } from "@/lib/types";
 import Image from "next/image";
@@ -14,7 +14,10 @@ export function ProductPreview({ products }: ProductPreviewProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 my-4">
       {products.map((product, index) => (
-        <Card key={index} className="overflow-hidden hover:shadow-lg transition-shadow">
+        <Card
+          key={index}
+          className="overflow-hidden hover:shadow-lg transition-shadow"
+        >
           <a
             href={product.shopUrl}
             target="_blank"
@@ -33,7 +36,7 @@ export function ProductPreview({ products }: ProductPreviewProps) {
                 {product.preOwned && (
                   <Badge
                     variant="secondary"
-                    className="absolute top-2 right-2 bg-amber-100 text-amber-900 hover:bg-amber-200"
+                    className="absolute top-2 right-2 bg-amber-100 text-amber-900"
                   >
                     Pre-owned
                   </Badge>
@@ -49,17 +52,7 @@ export function ProductPreview({ products }: ProductPreviewProps) {
                 <span className="text-lg font-semibold text-foreground">
                   {product.price}
                 </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">{product.shopName}</span>
-                  {product.preOwned && !product.imageUrl && (
-                    <Badge
-                      variant="secondary"
-                      className="bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs"
-                    >
-                      Pre-owned
-                    </Badge>
-                  )}
-                </div>
+                <span className="text-sm">{product.shopName}</span>
               </CardDescription>
             </CardHeader>
           </a>
