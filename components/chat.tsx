@@ -7,11 +7,14 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { ProductPreview } from "@/components/product-preview";
-import { CustomUIMessage, ProductPreviewsData } from "@/lib/types";
+import { CustomUIMessage, ProductPreviewsData, Prompt } from "@/lib/types";
 import { Loader2, Send } from "lucide-react";
 
 export function Chat() {
   const [input, setInput] = useState("");
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [showPrompts, setShowPrompts] = useState(true);
+
   const { messages, sendMessage, status } = useChat<CustomUIMessage>({
     api: "/api/chat",
   });
@@ -19,10 +22,29 @@ export function Chat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isLoading = status === "submitted" || status === "streaming";
 
-  // Debug: log messages when they change
+  // Fetch prompts on mount
   useEffect(() => {
-    console.log("Messages:", messages);
-  }, [messages]);
+    const fetchPrompts = async () => {
+      try {
+        const response = await fetch("/api/prompts");
+        if (response.ok) {
+          const data = await response.json();
+          setPrompts(data.prompts || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch prompts:", error);
+      }
+    };
+
+    fetchPrompts();
+  }, []);
+
+  // Hide prompts when user types or sends a message
+  useEffect(() => {
+    if (messages.length > 0 || input.length > 0) {
+      setShowPrompts(false);
+    }
+  }, [messages.length, input.length]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -30,6 +52,11 @@ export function Chat() {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  const handlePromptClick = (promptText: string) => {
+    sendMessage({ content: promptText });
+    setShowPrompts(false);
+  };
 
   return (
     <div className="flex flex-col h-screen max-w-4xl mx-auto p-4 pb-6">
@@ -42,9 +69,38 @@ export function Chat() {
 
       <ScrollArea className="flex-1 pr-4">
         <div className="space-y-4 pb-4">
-          {messages.length === 0 && (
+          {messages.length === 0 && !showPrompts && (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <p>Start a conversation...</p>
+            </div>
+          )}
+
+          {messages.length === 0 && showPrompts && prompts.length > 0 && (
+            <div className="flex flex-col items-center justify-center h-full gap-4">
+              <div className="text-center mb-2">
+                <h2 className="text-xl font-semibold mb-1">
+                  How can I help you today?
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Try one of these suggestions
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
+                {prompts
+                  .sort((a, b) => a.position - b.position)
+                  .map((prompt) => (
+                    <Button
+                      key={prompt.position}
+                      variant="outline"
+                      size="lg"
+                      onClick={() => handlePromptClick(prompt.prompt)}
+                      className="rounded-full gap-2 hover:scale-[1.02] transition-transform"
+                    >
+                      <span className="text-lg">{prompt.emoji}</span>
+                      <span>{prompt.title}</span>
+                    </Button>
+                  ))}
+              </div>
             </div>
           )}
 
