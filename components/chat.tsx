@@ -83,14 +83,25 @@ export function Chat() {
                         ));
                         stepStartTimes.delete(id);
                       }
-                    } else if (data.type === 'tool-input-start') {
+                    } else if (data.type === 'tool-input-available') {
                       const id = data.toolCallId;
-                      const name = data.toolName || 'Tool';
+                      const toolName = data.toolName || 'Tool';
+                      
+                      // Extract search query or other relevant params for display
+                      let displayName = toolName;
+                      if (data.input) {
+                        if (data.input.searchQuery) {
+                          displayName = `${toolName} (${data.input.searchQuery})`;
+                        } else if (data.input.query) {
+                          displayName = `${toolName} (${data.input.query})`;
+                        }
+                      }
+                      
                       stepStartTimes.set(id, now);
                       setStepTimings(prev => [...prev, {
                         id,
                         type: 'tool',
-                        name,
+                        name: displayName,
                         startTime: now,
                       }]);
                     } else if (data.type === 'tool-output-available') {
