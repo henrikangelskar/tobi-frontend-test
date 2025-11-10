@@ -14,9 +14,26 @@ export type ProductPreviewsData = {
   products: Product[];
 };
 
-// Define custom data parts for product previews
+// Timing data structure matching backend
+export type TimingStep = {
+  step: string;
+  duration: number;
+  substeps?: TimingStep[];
+  metadata?: {
+    toolName?: string;
+    tokens?: number;
+    reasoningTokens?: number;
+  };
+};
+
+export type TimingData = {
+  steps: TimingStep[];
+};
+
+// Define custom data parts for product previews and timing
 type CustomDataParts = {
   productPreviews?: ProductPreviewsData;
+  timing?: TimingData;
 };
 
 export type CustomUIMessage = UIMessage<unknown, CustomDataParts>;
