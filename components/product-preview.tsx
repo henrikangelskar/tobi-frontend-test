@@ -12,7 +12,7 @@ export function ProductPreview({ products }: ProductPreviewProps) {
   if (!products || products.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 my-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 my-4">
       {products.map((product, index) => (
         <Card
           key={index}
@@ -31,7 +31,7 @@ export function ProductPreview({ products }: ProductPreviewProps) {
                   alt={product.title}
                   fill
                   className="object-cover"
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
                 />
                 {product.preOwned && (
                   <Badge

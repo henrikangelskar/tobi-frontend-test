@@ -250,14 +250,16 @@ export function Chat() {
               <div
                 key={message.id}
                 className={`flex flex-col ${
-                  message.role === "user" ? "items-end" : "items-start"
+                  message.role === "user" ? "items-end" : ""
                 }`}
               >
                 <Card
-                  className={`max-w-[80%] p-4 ${
+                  className={`${
+                    message.role === "user" ? "max-w-[80%]" : "w-full"
+                  } p-4 ${
                     message.role === "user"
                       ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
+                      : "bg-transparent border-0 shadow-none"
                   }`}
                 >
                   <div className="space-y-2">
