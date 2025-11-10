@@ -6,21 +6,48 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { ProductPreview } from "@/components/product-preview";
 import { CustomUIMessage, ProductPreviewsData, Prompt } from "@/lib/types";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, Clock } from "lucide-react";
 
 export function Chat() {
   const [input, setInput] = useState("");
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [showPrompts, setShowPrompts] = useState(true);
+  const [messageTiming, setMessageTiming] = useState<Record<string, number>>({});
+  const requestStartTimeRef = useRef<number | null>(null);
+  const pendingMessageIdRef = useRef<string | null>(null);
 
   const { messages, sendMessage, status } = useChat<CustomUIMessage>({
     api: "/api/chat",
-  });
+  } as any);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const isLoading = status === "submitted" || status === "streaming";
+
+  // Track when streaming starts to calculate time to first byte
+  useEffect(() => {
+    if (status === "streaming" && requestStartTimeRef.current !== null) {
+      const timeToFirstByte = Date.now() - requestStartTimeRef.current;
+      
+      // Find the latest assistant message (the one being streamed)
+      const latestAssistantMessage = [...messages]
+        .reverse()
+        .find((msg) => msg.role === "assistant");
+      
+      if (latestAssistantMessage && pendingMessageIdRef.current !== latestAssistantMessage.id) {
+        setMessageTiming((prev) => ({
+          ...prev,
+          [latestAssistantMessage.id]: timeToFirstByte,
+        }));
+        pendingMessageIdRef.current = latestAssistantMessage.id;
+      }
+      
+      // Reset the timer
+      requestStartTimeRef.current = null;
+    }
+  }, [status, messages]);
 
   // Fetch prompts on mount
   useEffect(() => {
@@ -54,7 +81,8 @@ export function Chat() {
   }, [messages]);
 
   const handlePromptClick = (promptText: string) => {
-    sendMessage({ content: promptText });
+    requestStartTimeRef.current = Date.now();
+    sendMessage({ content: promptText } as any);
     setShowPrompts(false);
   };
 
@@ -104,18 +132,19 @@ export function Chat() {
             </div>
           )}
 
-          {messages.map((message) => {
+          {messages.map((message: any) => {
             // Extract text from parts
             const textParts = message.parts?.filter(
               (part: any) => part.type === "text"
             );
             const textContent = textParts?.map((part: any) => part.text).join("");
+            const timing = messageTiming[message.id];
 
             return (
               <div
                 key={message.id}
-                className={`flex ${
-                  message.role === "user" ? "justify-end" : "justify-start"
+                className={`flex flex-col ${
+                  message.role === "user" ? "items-end" : "items-start"
                 }`}
               >
                 <Card
@@ -145,6 +174,14 @@ export function Chat() {
                         })}
                   </div>
                 </Card>
+                
+                {/* Show timing badge for assistant messages */}
+                {message.role === "assistant" && timing !== undefined && (
+                  <Badge variant="secondary" className="mt-1 text-xs">
+                    <Clock className="h-3 w-3" />
+                    {timing}ms
+                  </Badge>
+                )}
               </div>
             );
           })}
@@ -158,7 +195,8 @@ export function Chat() {
           onSubmit={(e) => {
             e.preventDefault();
             if (input.trim()) {
-              sendMessage({ content: input });
+              requestStartTimeRef.current = Date.now();
+              sendMessage({ content: input } as any);
               setInput("");
             }
           }}
