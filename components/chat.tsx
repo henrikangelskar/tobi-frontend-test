@@ -8,8 +8,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProductPreview } from "@/components/product-preview";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { CustomUIMessage, ProductPreviewsData, Prompt, TimingStep } from "@/lib/types";
-import { Loader2, Send, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Send, Clock, ChevronDown, ChevronUp, Settings } from "lucide-react";
 
 export function Chat() {
   const [input, setInput] = useState("");
@@ -18,10 +25,26 @@ export function Chat() {
   const [messageTiming, setMessageTiming] = useState<Record<string, number>>({});
   const [messageTimingSteps, setMessageTimingSteps] = useState<Record<string, TimingStep[]>>({});
   const [expandedTiming, setExpandedTiming] = useState<Record<string, boolean>>({});
+  const [showSettingsSidebar, setShowSettingsSidebar] = useState(false);
   const [liveElapsedTime, setLiveElapsedTime] = useState<number>(0);
+  const [devMode, setDevMode] = useState<boolean>(false);
   const requestStartTimeRef = useRef<number | null>(null);
   const pendingMessageIdRef = useRef<string | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load devMode from localStorage on mount
+  useEffect(() => {
+    const savedDevMode = localStorage.getItem("devMode");
+    if (savedDevMode !== null) {
+      setDevMode(savedDevMode === "true");
+    }
+  }, []);
+
+  // Save devMode to localStorage when it changes
+  const toggleDevMode = (enabled: boolean) => {
+    setDevMode(enabled);
+    localStorage.setItem("devMode", enabled.toString());
+  };
 
   const { messages, sendMessage, status } = useChat<CustomUIMessage>({
     api: "/api/chat",
@@ -199,14 +222,46 @@ export function Chat() {
       return 0;
     });
 
-    const formatStepName = (step: string) => {
-      return step
-        .replace(/_/g, " ")
-        .replace(/llm/g, "LLM")
-        .replace(/mcp/g, "MCP")
-        .split(" ")
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ");
+    // Map technical names to user-friendly descriptions
+    const getUserFriendlyName = (step: string, toolName?: string): string => {
+      if (devMode) {
+        // Dev mode: show technical names
+        return step
+          .replace(/_/g, " ")
+          .replace(/llm/g, "LLM")
+          .replace(/mcp/g, "MCP")
+          .split(" ")
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
+      }
+
+      // User mode: show friendly descriptions
+      if (step === "routing") return "Analyzing your question";
+      if (step === "mcp_client") return "Connecting to services";
+      if (step === "tools_loading") return "Setting up tools";
+      if (step === "llm_first_chunk" || step === "conversation_llm_first_chunk") {
+        return "Starting to respond";
+      }
+
+      // LLM steps based on tool used
+      if (step.startsWith("llm_step_")) {
+        if (toolName?.includes("pricerunner_categories")) return "Finding relevant categories";
+        if (toolName?.includes("pricerunner_search")) return "Searching for products";
+        if (toolName?.includes("refurbished")) return "Looking for refurbished options";
+        if (toolName?.includes("web_search")) return "Searching the web";
+        if (toolName?.includes("qr")) return "Generating QR code";
+        return "Preparing response"; // Final step with no tool
+      }
+
+      if (step === "llm_total" || step === "conversation_llm_total") {
+        return "Completed";
+      }
+
+      return step;
+    };
+
+    const formatStepName = (step: string, toolName?: string) => {
+      return getUserFriendlyName(step, toolName);
     };
 
     return (
@@ -236,13 +291,13 @@ export function Chat() {
             {sortedSteps.map((step, idx) => (
               <div key={idx} className="flex items-start justify-between gap-2">
                 <div className="flex-1">
-                  <div className="font-medium">{formatStepName(step.step)}</div>
-                  {step.metadata?.toolName && (
+                  <div className="font-medium">{formatStepName(step.step, step.metadata?.toolName)}</div>
+                  {devMode && step.metadata?.toolName && (
                     <div className="text-muted-foreground text-[10px]">
                       Tool: {step.metadata.toolName}
                     </div>
                   )}
-                  {step.metadata?.tokens && (
+                  {devMode && step.metadata?.tokens && (
                     <div className="text-muted-foreground text-[10px]">
                       Tokens: {step.metadata.tokens}
                       {step.metadata.reasoningTokens
@@ -264,11 +319,21 @@ export function Chat() {
 
   return (
     <div className="flex flex-col h-screen max-w-4xl mx-auto p-4 pb-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">Tobi Chat</h1>
-        <p className="text-sm text-muted-foreground">
-          Chat with the shopping assistant
-        </p>
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Tobi Chat</h1>
+          <p className="text-sm text-muted-foreground">
+            Chat with the shopping assistant
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setShowSettingsSidebar(true)}
+          className="shrink-0"
+        >
+          <Settings className="h-5 w-5" />
+        </Button>
       </div>
 
       <ScrollArea className="flex-1 pr-4">
@@ -374,22 +439,9 @@ export function Chat() {
                 )}
 
                 {/* Show timing information for assistant messages */}
-                {message.role === "assistant" && (
-                  <div className={`${hasContent ? 'mt-1' : ''} max-w-[80%] w-full`}>
-                    {/* Original TTFT timing badge */}
-                    {(timing !== undefined || showLiveTimer) && (
-                      <Badge variant="secondary" className="text-xs mb-1">
-                        <Clock className="h-3 w-3" />
-                        TTFT: {timing !== undefined ? `${timing}ms` : `${liveElapsedTime}ms`}
-                      </Badge>
-                    )}
-
-                    {/* Detailed timing breakdown */}
-                    {timingSteps.length > 0 && (
-                      <div className="bg-muted/50 rounded-md px-3 py-2">
-                        {renderTimingBreakdown(timingSteps, message.id)}
-                      </div>
-                    )}
+                {message.role === "assistant" && timingSteps.length > 0 && (
+                  <div className={`${hasContent ? 'mt-1' : ''} w-full max-w-[80%]`}>
+                    {renderTimingBreakdown(timingSteps, message.id)}
                   </div>
                 )}
               </div>
@@ -458,6 +510,39 @@ export function Chat() {
           </Button>
         </form>
       </Card>
+
+      {/* Settings Sidebar */}
+      <Sheet open={showSettingsSidebar} onOpenChange={setShowSettingsSidebar}>
+        <SheetContent side="right" className="w-[400px] sm:w-[540px]">
+          <SheetHeader>
+            <SheetTitle>Developer Settings</SheetTitle>
+            <SheetDescription>
+              Configure developer mode and other settings
+            </SheetDescription>
+          </SheetHeader>
+
+          {/* Developer Mode Toggle */}
+          <div className="mt-6">
+            <Card className="p-4 mx-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Developer Mode</p>
+                  <p className="text-xs text-muted-foreground">
+                    Show technical details (tools, tokens, routes)
+                  </p>
+                </div>
+                <Button
+                  variant={devMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => toggleDevMode(!devMode)}
+                >
+                  {devMode ? "ON" : "OFF"}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
