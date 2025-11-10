@@ -6,48 +6,145 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ProductPreview } from "@/components/product-preview";
 import { CustomUIMessage, ProductPreviewsData, Prompt } from "@/lib/types";
-import { Loader2, Send, Clock } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
+import { StepTiming, type StepTiming as StepTimingType } from "@/components/step-timing";
 
 export function Chat() {
   const [input, setInput] = useState("");
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [showPrompts, setShowPrompts] = useState(true);
-  const [messageTiming, setMessageTiming] = useState<Record<string, number>>({});
-  const requestStartTimeRef = useRef<number | null>(null);
-  const pendingMessageIdRef = useRef<string | null>(null);
+  const [stepTimings, setStepTimings] = useState<StepTimingType[]>([]);
 
   const { messages, sendMessage, status } = useChat<CustomUIMessage>({
     api: "/api/chat",
   } as any);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const isLoading = status === "submitted" || status === "streaming";
-
-  // Track when streaming starts to calculate time to first byte
+  // Intercept fetch requests to track timing
   useEffect(() => {
-    if (status === "streaming" && requestStartTimeRef.current !== null) {
-      const timeToFirstByte = Date.now() - requestStartTimeRef.current;
+    const originalFetch = window.fetch;
+    
+    window.fetch = async (...args) => {
+      const [resource, config] = args;
       
-      // Find the latest assistant message (the one being streamed)
-      const latestAssistantMessage = [...messages]
-        .reverse()
-        .find((msg) => msg.role === "assistant");
-      
-      if (latestAssistantMessage && pendingMessageIdRef.current !== latestAssistantMessage.id) {
-        setMessageTiming((prev) => ({
-          ...prev,
-          [latestAssistantMessage.id]: timeToFirstByte,
-        }));
-        pendingMessageIdRef.current = latestAssistantMessage.id;
+      // Check if this is a chat API request
+      if (typeof resource === 'string' && resource.includes('/api/chat')) {
+        console.log('[Intercepted Fetch] Chat API request detected');
+        
+        // Reset timings
+        setStepTimings([]);
+        const stepStartTimes = new Map<string, number>();
+        
+        // Call original fetch
+        const response = await originalFetch(...args);
+        
+        // Clone response so we can read it twice
+        const clonedResponse = response.clone();
+        
+        // Process the stream for timing in the background
+        if (clonedResponse.body) {
+          const reader = clonedResponse.body.getReader();
+          const decoder = new TextDecoder();
+          
+          (async () => {
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                  if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+                  
+                  try {
+                    const data = JSON.parse(line.slice(6));
+                    const now = Date.now();
+                    
+                    console.log('[Timing Tracker] Event:', data.type);
+                    
+                    if (data.type === 'reasoning-start') {
+                      const id = data.id || `reasoning-${now}`;
+                      stepStartTimes.set(id, now);
+                      setStepTimings(prev => [...prev, {
+                        id,
+                        type: 'reasoning',
+                        name: 'Reasoning',
+                        startTime: now,
+                      }]);
+                    } else if (data.type === 'reasoning-end') {
+                      const id = data.id;
+                      const startTime = stepStartTimes.get(id);
+                      if (startTime) {
+                        setStepTimings(prev => prev.map(step =>
+                          step.id === id ? { ...step, endTime: now, duration: now - startTime } : step
+                        ));
+                        stepStartTimes.delete(id);
+                      }
+                    } else if (data.type === 'tool-input-start') {
+                      const id = data.toolCallId;
+                      const name = data.toolName || 'Tool';
+                      stepStartTimes.set(id, now);
+                      setStepTimings(prev => [...prev, {
+                        id,
+                        type: 'tool',
+                        name,
+                        startTime: now,
+                      }]);
+                    } else if (data.type === 'tool-output-available') {
+                      const id = data.toolCallId;
+                      const startTime = stepStartTimes.get(id);
+                      if (startTime) {
+                        setStepTimings(prev => prev.map(step =>
+                          step.id === id ? { ...step, endTime: now, duration: now - startTime } : step
+                        ));
+                        stepStartTimes.delete(id);
+                      }
+                    } else if (data.type === 'text-start') {
+                      const id = data.id || `text-${now}`;
+                      stepStartTimes.set(id, now);
+                      setStepTimings(prev => [...prev, {
+                        id,
+                        type: 'text',
+                        name: 'Response',
+                        startTime: now,
+                      }]);
+                    } else if (data.type === 'text-end') {
+                      const id = data.id;
+                      const startTime = stepStartTimes.get(id);
+                      if (startTime) {
+                        setStepTimings(prev => prev.map(step =>
+                          step.id === id ? { ...step, endTime: now, duration: now - startTime } : step
+                        ));
+                        stepStartTimes.delete(id);
+                      }
+                    }
+                  } catch (e) {
+                    // Ignore parse errors
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('[Timing Tracker] Error:', e);
+            }
+          })();
+        }
+        
+        return response;
       }
       
-      // Reset the timer
-      requestStartTimeRef.current = null;
-    }
-  }, [status, messages]);
+      return originalFetch(...args);
+    };
+    
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isLoading = status === "submitted" || status === "streaming";
 
   // Fetch prompts on mount
   useEffect(() => {
@@ -81,7 +178,6 @@ export function Chat() {
   }, [messages]);
 
   const handlePromptClick = (promptText: string) => {
-    requestStartTimeRef.current = Date.now();
     sendMessage({ content: promptText } as any);
     setShowPrompts(false);
   };
@@ -138,7 +234,6 @@ export function Chat() {
               (part: any) => part.type === "text"
             );
             const textContent = textParts?.map((part: any) => part.text).join("");
-            const timing = messageTiming[message.id];
 
             return (
               <div
@@ -174,17 +269,14 @@ export function Chat() {
                         })}
                   </div>
                 </Card>
-                
-                {/* Show timing badge for assistant messages */}
-                {message.role === "assistant" && timing !== undefined && (
-                  <Badge variant="secondary" className="mt-1 text-xs">
-                    <Clock className="h-3 w-3" />
-                    {timing}ms
-                  </Badge>
-                )}
               </div>
             );
           })}
+
+          {/* Show step timing under messages when streaming or after completion */}
+          {stepTimings.length > 0 && (
+            <StepTiming steps={stepTimings} isStreaming={isLoading} />
+          )}
 
           <div ref={scrollRef} />
         </div>
@@ -195,7 +287,6 @@ export function Chat() {
           onSubmit={(e) => {
             e.preventDefault();
             if (input.trim()) {
-              requestStartTimeRef.current = Date.now();
               sendMessage({ content: input } as any);
               setInput("");
             }

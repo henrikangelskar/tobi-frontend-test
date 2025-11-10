@@ -40,9 +40,46 @@ export async function POST(req: Request) {
     throw new Error(`Backend responded with ${response.status}`);
   }
 
-  // Return the streaming response from backend
-  // The backend already uses createUIMessageStreamResponse, so we can pass it through
-  return new Response(response.body, {
+  // Wrap the stream to add timing information
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Pass through the original chunk
+          controller.enqueue(value);
+
+          // Log the data for debugging
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+          
+          for (const line of lines) {
+            if (line.startsWith("data: ") && line !== "data: [DONE]") {
+              try {
+                const data = JSON.parse(line.slice(6));
+                console.log("[API Route] SSE Event:", data.type);
+              } catch (e) {
+                // Ignore parse errors
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[API Route] Stream error:", error);
+        controller.error(error);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
