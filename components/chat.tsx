@@ -16,6 +16,7 @@ export function Chat() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [showPrompts, setShowPrompts] = useState(true);
   const [stepTimings, setStepTimings] = useState<StepTimingType[]>([]);
+  const [productPreviews, setProductPreviews] = useState<Map<string, ProductPreviewsData>>(new Map());
 
   const { messages, sendMessage, status } = useChat<CustomUIMessage>({
     api: "/api/chat",
@@ -64,6 +65,16 @@ export function Chat() {
                     const now = Date.now();
                     
                     console.log('[Timing Tracker] Event:', data.type);
+                    
+                    // Capture product preview data
+                    if (data.type === 'data-productPreviews') {
+                      const messageId = data.id || 'latest';
+                      setProductPreviews(prev => {
+                        const newMap = new Map(prev);
+                        newMap.set(messageId, data.data as ProductPreviewsData);
+                        return newMap;
+                      });
+                    }
                     
                     if (data.type === 'reasoning-start') {
                       const id = data.id || `reasoning-${now}`;
@@ -191,6 +202,7 @@ export function Chat() {
   const handlePromptClick = (promptText: string) => {
     sendMessage({ content: promptText } as any);
     setShowPrompts(false);
+    setProductPreviews(new Map()); // Clear previous product previews
   };
 
   return (
@@ -239,12 +251,17 @@ export function Chat() {
             </div>
           )}
 
-          {messages.map((message: any) => {
+          {messages.map((message: any, messageIndex: number) => {
             // Extract text from parts
             const textParts = message.parts?.filter(
               (part: any) => part.type === "text"
             );
             const textContent = textParts?.map((part: any) => part.text).join("");
+
+            // Check if this is the last assistant message to show product previews
+            const isLastAssistantMessage = 
+              message.role === "assistant" && 
+              messageIndex === messages.length - 1;
 
             return (
               <div
@@ -270,7 +287,7 @@ export function Chat() {
                       </div>
                     )}
 
-                    {/* Render product previews from data parts */}
+                    {/* Render product previews from data parts (if available) */}
                     {message.parts &&
                       message.parts
                         .filter((part: any) => part.type === "data-productPreviews")
@@ -280,6 +297,11 @@ export function Chat() {
                             <ProductPreview key={index} products={data.products} />
                           );
                         })}
+                    
+                    {/* Render product previews from state (for the latest message) */}
+                    {isLastAssistantMessage && Array.from(productPreviews.values()).map((previewData, index) => (
+                      <ProductPreview key={`state-${index}`} products={previewData.products} />
+                    ))}
                   </div>
                 </Card>
               </div>
@@ -302,6 +324,7 @@ export function Chat() {
             if (input.trim()) {
               sendMessage({ content: input } as any);
               setInput("");
+              setProductPreviews(new Map()); // Clear previous product previews
             }
           }}
           className="flex items-center gap-3"
