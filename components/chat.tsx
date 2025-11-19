@@ -15,7 +15,8 @@ export function Chat() {
   const [input, setInput] = useState("");
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [showPrompts, setShowPrompts] = useState(true);
-  const [stepTimings, setStepTimings] = useState<StepTimingType[]>([]);
+  const [allStepTimings, setAllStepTimings] = useState<Map<string, StepTimingType[]>>(new Map());
+  const [currentMessageId, setCurrentMessageId] = useState<string | null>(null);
   const [productPreviews, setProductPreviews] = useState<Map<string, ProductPreviewsData>>(new Map());
 
   const { messages, sendMessage, status } = useChat<CustomUIMessage>({
@@ -33,9 +34,17 @@ export function Chat() {
       if (typeof resource === 'string' && resource.includes('/api/chat')) {
         console.log('[Intercepted Fetch] Chat API request detected');
         
-        // Reset timings
-        setStepTimings([]);
+        // Generate a unique ID for this message conversation
+        const messageId = `msg-${Date.now()}`;
+        setCurrentMessageId(messageId);
+        
+        // Initialize timings for this message
         const stepStartTimes = new Map<string, number>();
+        setAllStepTimings(prev => {
+          const newMap = new Map(prev);
+          newMap.set(messageId, []);
+          return newMap;
+        });
         
         // Call original fetch
         const response = await originalFetch(...args);
@@ -68,7 +77,6 @@ export function Chat() {
                     
                     // Capture product preview data
                     if (data.type === 'data-productPreviews') {
-                      const messageId = data.id || 'latest';
                       setProductPreviews(prev => {
                         const newMap = new Map(prev);
                         newMap.set(messageId, data.data as ProductPreviewsData);
@@ -79,19 +87,29 @@ export function Chat() {
                     if (data.type === 'reasoning-start') {
                       const id = data.id || `reasoning-${now}`;
                       stepStartTimes.set(id, now);
-                      setStepTimings(prev => [...prev, {
-                        id,
-                        type: 'reasoning',
-                        name: 'Reasoning',
-                        startTime: now,
-                      }]);
+                      setAllStepTimings(prev => {
+                        const newMap = new Map(prev);
+                        const timings = newMap.get(messageId) || [];
+                        newMap.set(messageId, [...timings, {
+                          id,
+                          type: 'reasoning',
+                          name: 'Reasoning',
+                          startTime: now,
+                        }]);
+                        return newMap;
+                      });
                     } else if (data.type === 'reasoning-end') {
                       const id = data.id;
                       const startTime = stepStartTimes.get(id);
                       if (startTime) {
-                        setStepTimings(prev => prev.map(step =>
-                          step.id === id ? { ...step, endTime: now, duration: now - startTime } : step
-                        ));
+                        setAllStepTimings(prev => {
+                          const newMap = new Map(prev);
+                          const timings = newMap.get(messageId) || [];
+                          newMap.set(messageId, timings.map(step =>
+                            step.id === id ? { ...step, endTime: now, duration: now - startTime } : step
+                          ));
+                          return newMap;
+                        });
                         stepStartTimes.delete(id);
                       }
                     } else if (data.type === 'tool-input-available') {
@@ -109,37 +127,57 @@ export function Chat() {
                       }
                       
                       stepStartTimes.set(id, now);
-                      setStepTimings(prev => [...prev, {
-                        id,
-                        type: 'tool',
-                        name: displayName,
-                        startTime: now,
-                      }]);
+                      setAllStepTimings(prev => {
+                        const newMap = new Map(prev);
+                        const timings = newMap.get(messageId) || [];
+                        newMap.set(messageId, [...timings, {
+                          id,
+                          type: 'tool',
+                          name: displayName,
+                          startTime: now,
+                        }]);
+                        return newMap;
+                      });
                     } else if (data.type === 'tool-output-available') {
                       const id = data.toolCallId;
                       const startTime = stepStartTimes.get(id);
                       if (startTime) {
-                        setStepTimings(prev => prev.map(step =>
-                          step.id === id ? { ...step, endTime: now, duration: now - startTime } : step
-                        ));
+                        setAllStepTimings(prev => {
+                          const newMap = new Map(prev);
+                          const timings = newMap.get(messageId) || [];
+                          newMap.set(messageId, timings.map(step =>
+                            step.id === id ? { ...step, endTime: now, duration: now - startTime } : step
+                          ));
+                          return newMap;
+                        });
                         stepStartTimes.delete(id);
                       }
                     } else if (data.type === 'text-start') {
                       const id = data.id || `text-${now}`;
                       stepStartTimes.set(id, now);
-                      setStepTimings(prev => [...prev, {
-                        id,
-                        type: 'text',
-                        name: 'Response',
-                        startTime: now,
-                      }]);
+                      setAllStepTimings(prev => {
+                        const newMap = new Map(prev);
+                        const timings = newMap.get(messageId) || [];
+                        newMap.set(messageId, [...timings, {
+                          id,
+                          type: 'text',
+                          name: 'Response',
+                          startTime: now,
+                        }]);
+                        return newMap;
+                      });
                     } else if (data.type === 'text-end') {
                       const id = data.id;
                       const startTime = stepStartTimes.get(id);
                       if (startTime) {
-                        setStepTimings(prev => prev.map(step =>
-                          step.id === id ? { ...step, endTime: now, duration: now - startTime } : step
-                        ));
+                        setAllStepTimings(prev => {
+                          const newMap = new Map(prev);
+                          const timings = newMap.get(messageId) || [];
+                          newMap.set(messageId, timings.map(step =>
+                            step.id === id ? { ...step, endTime: now, duration: now - startTime } : step
+                          ));
+                          return newMap;
+                        });
                         stepStartTimes.delete(id);
                       }
                     }
@@ -202,7 +240,6 @@ export function Chat() {
   const handlePromptClick = (promptText: string) => {
     sendMessage({ content: promptText } as any);
     setShowPrompts(false);
-    setProductPreviews(new Map()); // Clear previous product previews
   };
 
   return (
@@ -258,10 +295,21 @@ export function Chat() {
             );
             const textContent = textParts?.map((part: any) => part.text).join("");
 
-            // Check if this is the last assistant message to show product previews
-            const isLastAssistantMessage = 
-              message.role === "assistant" && 
-              messageIndex === messages.length - 1;
+            // Count which assistant message this is (to match with timing data)
+            let assistantMessageIndex = -1;
+            if (message.role === "assistant") {
+              assistantMessageIndex = messages
+                .slice(0, messageIndex + 1)
+                .filter((m: any) => m.role === "assistant").length - 1;
+            }
+
+            // Get the timing key for this message
+            const timingKeys = Array.from(allStepTimings.keys());
+            const timingKey = assistantMessageIndex >= 0 ? timingKeys[assistantMessageIndex] : null;
+            const messageTimings = timingKey ? allStepTimings.get(timingKey) : null;
+            
+            // Get the product preview for this message
+            const messageProductPreview = timingKey ? productPreviews.get(timingKey) : null;
 
             return (
               <div
@@ -298,20 +346,25 @@ export function Chat() {
                           );
                         })}
                     
-                    {/* Render product previews from state (for the latest message) */}
-                    {isLastAssistantMessage && Array.from(productPreviews.values()).map((previewData, index) => (
-                      <ProductPreview key={`state-${index}`} products={previewData.products} />
-                    ))}
+                    {/* Render product previews from state (for this specific assistant message) */}
+                    {message.role === "assistant" && messageProductPreview && (
+                      <ProductPreview products={messageProductPreview.products} />
+                    )}
                   </div>
                 </Card>
+                
+                {/* Show step timing for this specific message */}
+                {message.role === "assistant" && messageTimings && messageTimings.length > 0 && (
+                  <div className="mt-2">
+                    <StepTiming 
+                      steps={messageTimings} 
+                      isStreaming={messageIndex === messages.length - 1 && isLoading} 
+                    />
+                  </div>
+                )}
               </div>
             );
           })}
-
-          {/* Show step timing under messages when streaming or after completion */}
-          {stepTimings.length > 0 && (
-            <StepTiming steps={stepTimings} isStreaming={isLoading} />
-          )}
 
           <div ref={scrollRef} />
         </div>
@@ -324,7 +377,6 @@ export function Chat() {
             if (input.trim()) {
               sendMessage({ content: input } as any);
               setInput("");
-              setProductPreviews(new Map()); // Clear previous product previews
             }
           }}
           className="flex items-center gap-3"
