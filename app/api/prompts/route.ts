@@ -1,5 +1,3 @@
-export const runtime = "edge";
-
 export async function GET(req: Request) {
   const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
 
